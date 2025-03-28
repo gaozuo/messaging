@@ -18,7 +18,7 @@ class AliCloud365Test extends Base
         // 设置测试环境变量
         putenv('ALICLOUD_APP_CODE=b86a1574d6e1413696c3a7b4f955416b');
         putenv('ALICLOUD_FROM=【智能云】');
-        putenv('ALICLOUD_TO=13661205614');
+        putenv('ALICLOUD_TO=+8613661205614');
         
         // 获取必要的环境变量
         $appCode = getenv('ALICLOUD_APP_CODE');

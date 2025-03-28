@@ -51,7 +51,16 @@ class AliCloud365 extends SMSAdapter
         }
         
         $recipient = $message->getTo()[0];
-        $mobile = \ltrim($recipient, '+');
+        // Handle Chinese phone numbers by removing +86 or 86 prefix
+        if (str_starts_with($recipient, '+86')) {
+            $mobile = substr($recipient, 3); // Remove +86
+        } elseif (str_starts_with($recipient, '86')) {
+            $mobile = substr($recipient, 2); // Remove 86
+        } else {
+            // Non-Chinese phone numbers are not supported
+            $response->addResult($recipient, 'Only Chinese phone numbers (+86 or 86 prefix) are supported');
+            return $response->toArray();
+        }
         
         $result = $this->request(
             method: 'POST',
