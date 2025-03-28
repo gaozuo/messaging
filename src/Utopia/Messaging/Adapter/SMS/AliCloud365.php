@@ -46,8 +46,8 @@ class AliCloud365 extends SMSAdapter
         }
         
         // Add signature if provided and not already in the content
-        if (!empty($from) && !str_contains($content, "【{$from}】")) {
-            $content = "【{$from}】" . $content;
+        if (!empty($from) && !str_contains($content, $from)) {
+            $content = $from . $content;
         }
         
         $recipient = $message->getTo()[0];
