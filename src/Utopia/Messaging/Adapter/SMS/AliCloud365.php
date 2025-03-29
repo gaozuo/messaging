@@ -66,7 +66,7 @@ class AliCloud365 extends SMSAdapter
             method: 'POST',
             url: 'https://smsv2.market.alicloudapi.com/sms/sendv2',
             headers: [
-                'Content-Type: application/x-www-form-urlencoded',
+                'Content-Type: application/x-www-form-urlencoded; charset=UTF-8',
                 'Authorization: APPCODE ' . $this->appCode,
             ],
             body: [
