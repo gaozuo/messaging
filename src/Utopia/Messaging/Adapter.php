@@ -107,7 +107,7 @@ abstract class Adapter
             CURLOPT_URL => $url,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_USERAGENT => "Appwrite {$this->getName()} Message Sender",
+            #CURLOPT_USERAGENT => "Appwrite {$this->getName()} Message Sender",
             CURLOPT_TIMEOUT => $timeout,
         ]);
 
