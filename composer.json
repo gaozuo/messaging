@@ -1,5 +1,5 @@
 {
-  "name": "utopia-php/messaging",
+  "name": "gaozuogg/messaging",
   "description": "A simple, light and advanced PHP messaging library",
   "type": "library",
   "keywords": ["php","messaging", "upf", "utopia", "utopia-php", "library"],
