@@ -14,15 +14,13 @@ class AliCloudSMS extends SMSAdapter
      * @param string $accessKeyId AliCloud AccessKey ID
      * @param string $accessKeySecret AliCloud AccessKey Secret
      * @param string $templateCode Default SMS template code
-     * @param string $from Default SMS signature name
      * @param string $apiEndpoint API endpoint for the AliCloud SMS proxy service
      * @param string $fallbackParamKey Parameter key for non-JSON content
      */
     public function __construct(
         private string $accessKeyId,
         private string $accessKeySecret,
-        private string $templateCode,
-        private string $from,
+        private string $templateCode = 'SMS_325980128',
         private string $apiEndpoint = 'https://alisms.functions.cloud.vkwave.com/',
         private string $fallbackParamKey = 'code'
     ) {
@@ -66,8 +64,8 @@ class AliCloudSMS extends SMSAdapter
             $templateParam[$this->fallbackParamKey] = $content;
         }
 
-        // Determine sign name: use message.from first, then class default
-        $signName = $message->getFrom() ?? $this->from;
+        // Use sign name from message
+        $signName = $message->getFrom();
 
         $smsList = [];
         foreach ($message->getTo() as $phoneNumber) {
