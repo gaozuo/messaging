@@ -5,33 +5,26 @@ namespace Utopia\Messaging\Adapter\SMS;
 use Utopia\Messaging\Adapter\SMS as SMSAdapter;
 use Utopia\Messaging\Messages\SMS as SMSMessage;
 use Utopia\Messaging\Response;
-use AlibabaCloud\SDK\Dysmsapi\V20170525\Dysmsapi;
-use AlibabaCloud\SDK\Dysmsapi\V20170525\Models\SendSmsRequest;
-use Darabonba\OpenApi\Models\Config;
-use AlibabaCloud\Tea\Exception\TeaError;
-use AlibabaCloud\Dara\Models\RuntimeOptions;
-use AlibabaCloud\Credentials\Credential;
-use AlibabaCloud\Credentials\Credential\Config as CredentialConfig;
 
 class AliCloudSMS extends SMSAdapter
 {
     protected const NAME = 'AliCloudSMS';
 
     /**
-     * @param string $accessKeyId AliCloud Access Key ID
-     * @param string $accessKeySecret AliCloud Access Key Secret
-     * @param string $signName SMS signature name
-     * @param string $templateCode SMS template code
-     * @param string $templateParam Template parameter JSON string with placeholders (e.g., '{"code":"{{token}}"}')
-     * @param string $placeholderParam Placeholder to replace in templateParam (default: '{{token}}')
+     * @param string $accessKeyId AliCloud AccessKey ID
+     * @param string $accessKeySecret AliCloud AccessKey Secret
+     * @param string $templateCode Default SMS template code
+     * @param string $from Default SMS signature name
+     * @param string $apiEndpoint API endpoint for the AliCloud SMS proxy service
+     * @param string $fallbackParamKey Parameter key for non-JSON content
      */
     public function __construct(
         private string $accessKeyId,
         private string $accessKeySecret,
-        private string $signName,
         private string $templateCode,
-        private string $templateParam,
-        private string $placeholderParam = '{{token}}'
+        private string $from,
+        private string $apiEndpoint = 'https://alisms.functions.cloud.vkwave.com/',
+        private string $fallbackParamKey = 'code'
     ) {
     }
 
@@ -42,27 +35,7 @@ class AliCloudSMS extends SMSAdapter
 
     public function getMaxMessagesPerRequest(): int
     {
-        return 1;
-    }
-
-    /**
-     * Create AliCloud SMS client
-     */
-    private function createClient(): Dysmsapi
-    {
-        $credConfig = new CredentialConfig([
-            'type' => 'access_key',
-            'accessKeyId' => $this->accessKeyId,
-            'accessKeySecret' => $this->accessKeySecret,
-        ]);
-
-        $credential = new Credential($credConfig);
-        $config = new Config([
-            'credential' => $credential
-        ]);
-        $config->endpoint = 'dysmsapi.aliyuncs.com';
-
-        return new Dysmsapi($config);
+        return 100;
     }
 
     /**
@@ -72,43 +45,77 @@ class AliCloudSMS extends SMSAdapter
     {
         $response = new Response($this->getType());
 
-        $recipient = $message->getTo()[0];
-        $phoneNumber = $recipient; // Support phone numbers with country code and '+'
+        // Parse template parameters and code from message content
+        $templateParam = [];
+        $templateCode = $this->templateCode;
+
         $content = $message->getContent();
+        $decodedContent = json_decode($content, true);
 
-        // Replace placeholder in template parameter with actual content
-        $templateParam = str_replace($this->placeholderParam, $content, $this->templateParam);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedContent)) {
+            // Content is valid JSON
+            $templateParam = $decodedContent;
 
-        try {
-            $client = $this->createClient();
+            // Extract templateCode if present
+            if (isset($templateParam['templateCode'])) {
+                $templateCode = $templateParam['templateCode'];
+                unset($templateParam['templateCode']);
+            }
+        } else {
+            // Content is not JSON, use fallback parameter key
+            $templateParam[$this->fallbackParamKey] = $content;
+        }
 
-            $sendSmsRequest = new SendSmsRequest([
-                'signName' => $this->signName,
-                'templateCode' => $this->templateCode,
-                'phoneNumbers' => $phoneNumber,
+        // Determine sign name: use message.from first, then class default
+        $signName = $message->getFrom() ?? $this->from;
+
+        $smsList = [];
+        foreach ($message->getTo() as $phoneNumber) {
+            $smsList[] = [
+                'phoneNumber' => $phoneNumber,
+                'signName' => $signName,
                 'templateParam' => $templateParam
-            ]);
+            ];
+        }
 
-            $runtime = new RuntimeOptions();
-            $result = $client->sendSmsWithOptions($sendSmsRequest, $runtime);
+        $requestBody = [
+            'accessKeyId' => $this->accessKeyId,
+            'accessKeySecret' => $this->accessKeySecret,
+            'templateCode' => $templateCode,
+            'smsList' => $smsList,
+        ];
 
-            if ($result->statusCode >= 200 && $result->statusCode < 300) {
-                $responseBody = $result->body;
-                if ($responseBody->code === 'OK') {
-                    $response->setDeliveredTo(1);
-                    $response->addResult($recipient);
-                } else {
-                    $errorMessage = $responseBody->message ?: 'SMS send failed with code: ' . $responseBody->code;
-                    $response->addResult($recipient, $errorMessage);
+        $result = $this->request(
+            method: 'POST',
+            url: $this->apiEndpoint,
+            headers: [
+                'Content-Type: application/json',
+            ],
+            body: $requestBody,
+        );
+
+        if ($result['statusCode'] >= 200 && $result['statusCode'] < 300) {
+            $responseBody = $result['response'];
+
+            if (isset($responseBody['Code']) && $responseBody['Code'] === 'OK') {
+
+                $response->setDeliveredTo(count($message->getTo()));
+                foreach ($message->getTo() as $to) {
+                    $response->addResult($to);
                 }
             } else {
-                $response->addResult($recipient, 'HTTP status code: ' . $result->statusCode);
+
+                $errorMessage = $responseBody['Message'] ?? 'Unknown error';
+                foreach ($message->getTo() as $to) {
+                    $response->addResult($to, $errorMessage);
+                }
             }
-        } catch (TeaError $error) {
-            $errorMessage = $error->message ?? 'Unknown error occurred';
-            $response->addResult($recipient, $errorMessage);
-        } catch (\Exception $error) {
-            $response->addResult($recipient, $error->getMessage());
+        } else {
+
+            $errorMessage = $result['response']['Message'] ?? 'HTTP error: ' . $result['statusCode'];
+            foreach ($message->getTo() as $to) {
+                $response->addResult($to, $errorMessage);
+            }
         }
 
         return $response->toArray();
